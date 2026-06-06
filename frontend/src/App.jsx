@@ -6,7 +6,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, CartesianGrid } from 'recharts';
 import { UploadCloud, Briefcase, Users, CheckCircle, Loader2, BarChart2, Info } from 'lucide-react';
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = 'https://eswar-ml-ai-resume-ranker-api.hf.space';
 
 // Master dictionary of tech skills to power the Gap Analysis Engine
 const TECH_DICTIONARY = [
