@@ -1,88 +1,57 @@
-import fitz  # PyMuPDF
+import fitz
 import spacy
-from spacy.matcher import PhraseMatcher
 import re
-from typing import Dict, Any, Optional
 
 class ResumeParser:
     def __init__(self):
-        # Load the English NLP model
-        try:
-            self.nlp = spacy.load("en_core_web_sm")
-        except OSError:
-            raise RuntimeError("spaCy model not found. Run: python -m spacy download en_core_web_sm")
-        
-        # Initialize PhraseMatcher for skills extraction
-        self.matcher = PhraseMatcher(self.nlp.vocab, attr="LOWER")
-        self._initialize_skill_matcher()
+        # Load the NLP model once into memory for performance
+        self.nlp = spacy.load("en_core_web_sm")
 
-    def _initialize_skill_matcher(self):
-        """Loads a predefined list of skills into the spaCy matcher."""
-        # In a production app, this list would come from a database.
-        core_skills = [
-            "Python", "JavaScript", "React", "Node.js", "Machine Learning",
-            "FastAPI", "NLP", "SQL", "Docker", "AWS", "Git", "Pandas",
-            "Data Analysis", "C++", "Java", "TypeScript", "Tailwind"
-        ]
-        skill_patterns = [self.nlp.make_doc(text) for text in core_skills]
-        self.matcher.add("SKILLS", skill_patterns)
+    def extract_text(self, file_input) -> str:
+        # ADVANCED GUARDRAIL: Handle both local file paths and binary web streams
+        if isinstance(file_input, bytes):
+            # Read from memory (FastAPI upload)
+            doc = fitz.open(stream=file_input, filetype="pdf")
+        else:
+            # Read from hard drive (Local testing)
+            doc = fitz.open(file_input)
+            
+        text = ""
+        for page in doc:
+            text += page.get_text("text")
+        return text
 
-    def extract_text_from_pdf(self, pdf_path: str) -> Optional[str]:
-        """Extracts and cleans raw text from a PDF."""
-        try:
-            doc = fitz.open(pdf_path)
-            text = " ".join([page.get_text() for page in doc])
-            # Clean text: remove extra whitespaces and newlines
-            clean_text = re.sub(r'\s+', ' ', text).strip()
-            return clean_text
-        except Exception as e:
-            print(f"Error extracting PDF: {e}")
-            return None
-
-    def extract_contact_info(self, text: str) -> Dict[str, Optional[str]]:
-        """Uses Regex to find emails and phone numbers."""
-        email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
-        phone_pattern = r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}'
-        
-        email = re.search(email_pattern, text)
-        phone = re.search(phone_pattern, text)
-        
+    def extract_contact_info(self, text: str) -> dict:
+        email = re.search(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", text)
+        phone = re.search(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}", text)
         return {
-            "email": email.group() if email else None,
-            "phone": phone.group() if phone else None
+            "email": email.group(0) if email else None,
+            "phone": phone.group(0) if phone else None
         }
 
-    def extract_entities(self, text: str) -> Dict[str, Any]:
-        """Uses spaCy to extract skills and names."""
-        doc = self.nlp(text)
-        
-        # Extract Skills using the Matcher
-        matches = self.matcher(doc)
-        skills = set()
-        for match_id, start, end in matches:
-            span = doc[start:end]
-            skills.add(span.text)
-            
-        # Extract potential names (PERSON entities)
-        names = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
-        
-        return {
-            "predicted_name": names[0] if names else None,
-            "skills": list(skills)
-        }
+    def extract_skills(self, text: str) -> list:
+        # Base technical skills for the matrix to look for
+        tech_skills = ["Python", "Java", "JavaScript", "React", "FastAPI", "SQL", "Docker", "Machine Learning", "AWS", "Node.js", "Data Visualization"]
+        found_skills = [skill for skill in tech_skills if skill.lower() in text.lower()]
+        return list(set(found_skills))
 
-    def parse(self, pdf_path: str) -> Dict[str, Any]:
-        """Main pipeline to parse a resume."""
-        text = self.extract_text_from_pdf(pdf_path)
-        if not text:
-            return {"error": "Could not extract text from document."}
-            
-        contact_info = self.extract_contact_info(text)
-        nlp_entities = self.extract_entities(text)
+    def parse_resume(self, file_input) -> dict:
+        raw_text = self.extract_text(file_input)
         
+        # NLP Processing
+        doc = self.nlp(raw_text)
+        
+        # Heuristic for name extraction (First PERSON entity found)
+        name = "Unknown"
+        for ent in doc.ents:
+            if ent.label_ == "PERSON":
+                name = ent.text
+                break
+                
         return {
-            "contact": contact_info,
-            "name": nlp_entities["predicted_name"],
-            "skills": nlp_entities["skills"],
-            "raw_text_length": len(text)
+            "name": name,
+            "contact": self.extract_contact_info(raw_text),
+            "skills": self.extract_skills(raw_text),
+            "raw_text": raw_text,
+            "raw_text_length": len(raw_text)
         }
