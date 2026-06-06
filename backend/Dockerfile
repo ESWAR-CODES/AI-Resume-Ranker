@@ -21,8 +21,8 @@ RUN python -m spacy download en_core_web_sm
 # 7. Copy the rest of your backend code into the container
 COPY . .
 
-# 8. Expose port 8000 for the cloud router
-EXPOSE 8000
+# 8. Expose port 7860for the Hugging face router
+EXPOSE 7860
 
 # 9. Start the Uvicorn production server
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
